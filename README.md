@@ -1,4 +1,6 @@
-This repository looks at ways to optimally parallel process h2o when it is used with the tidymodels agua package. 
+
+
+This repository looks at ways to optimally parallel process the [h2o](https://h2o.ai) ecosystem when it is used with the tidymodels [agua package](https://agua.tidymodels.org). 
 
 A simulated data set was tuned over a small grid of 5 candidate models and model performance was measured using 10-fold cross-validation. This means that a total of 50 models were created during tuning. 
 
@@ -18,7 +20,7 @@ The computations were run in a few different ways:
 
 * __Multithreaded, multicore parallel processing__: Along with `h2o.init(nthreads = -1)`, the calls to the h2o server used `h2o.grid(parallelism = 50)`. In additional, multicore parallel processing via the foreach and doMC packages were used to send all of the candidate models for all resamples to the server at once. 
 
-* __Multithreaded, PSOCK parallel processing__: Along with `h2o.init(nthreads = -1)`, the calls to the h2o server used `h2o.grid(parallelism = 50)`. In additional, multicore parallel processing via the foreach and doParallel packages were used to send all of the candidate models for all resamples to the server at once. 
+* __Multithreaded, PSOCK parallel processing__: Along with `h2o.init(nthreads = -1)`, the calls to the h2o server used `h2o.grid(parallelism = 50)`. Here, parallel processing was enabled via the foreach and doParallel packages (using a PSOCK cluster) to achieve similar results
 
 
 ## Results
@@ -47,7 +49,7 @@ All 20 possible (logical) cores are being used.
 Once we allow the h2o server to train multiple models at once, the grid search lasted 218.5 seconds (a 1.4-fold speed-up): 
 
 
-<img src="figure/multithreaded-parallel-1.png" alt="plot of chunk multithreaded-parallel" style="display: block; margin: auto;" />
+<img src="figure/multithreaded-parallel-1.svg" alt="plot of chunk multithreaded-parallel" style="display: block; margin: auto;" />
 
 Once we used the foreach package to send all the jobs to the h2o server at once, there was an drop in execution time: 62.9 seconds for muticore and 63.3 seconds using a PSOCK cluster. These correspond to speed-ups of 63.3-fold. 
 
