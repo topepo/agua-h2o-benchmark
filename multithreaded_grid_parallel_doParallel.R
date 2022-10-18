@@ -1,0 +1,69 @@
+library(tidymodels)
+library(agua)
+library(h2o)
+library(doParallel)
+
+# ------------------------------------------------------------------------------
+
+# monitor using
+# /usr/local/opt/python@3.9/Frameworks/Python.framework/Versions/3.9/bin/syrupy.py -c '(R\.framework)|(java)' -t ~/tmp/multithread_grid_psock --separator=, --no-align
+
+# ------------------------------------------------------------------------------
+
+tidymodels_prefer()
+theme_set(theme_bw())
+options(pillar.advice = FALSE)
+
+cl <- makePSOCKcluster(10)
+registerDoParallel(cl)
+
+h2o.init(nthreads = -1)
+h2o_thread_spec <- agua_backend_options(parallelism = 50)
+
+# Prime the worker processes
+check_workers_h2o <- function() {
+  library(h2o)
+  h2o.init()  #<- doesn't start a new server if you've already started one.
+  h2o.clusterIsUp()
+}
+unlist(parallel::clusterCall(cl, check_workers_h2o))
+
+# ------------------------------------------------------------------------------
+
+set.seed(1)
+dat <- sim_classification(10000)
+rs <- vfold_cv(dat, v = 10)
+
+# ------------------------------------------------------------------------------
+
+nnet_spec <-
+  mlp(hidden_units = tune(), penalty = tune(), epochs = tune(), activation = tune()) %>%
+  set_engine("h2o") %>%
+  set_mode("classification")
+
+# ------------------------------------------------------------------------------
+
+set.seed(2)
+nnet_grid <-
+  nnet_spec %>%
+  extract_parameter_set_dials() %>%
+  grid_max_entropy(size = 5)
+
+# ------------------------------------------------------------------------------
+
+grid_ctrl <- control_grid(backend_options = h2o_thread_spec)
+
+system.time({
+  set.seed(3)
+  nnet_res <-
+    nnet_spec %>%
+    tune_grid(class ~ ., resamples = rs, grid = nnet_grid, control = grid_ctrl)
+})
+
+collect_metrics(nnet_res)
+
+# ------------------------------------------------------------------------------
+
+stopCluster(cl)
+
+q("no")

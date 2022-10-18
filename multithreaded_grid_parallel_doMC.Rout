@@ -1,0 +1,178 @@
+
+R version 4.2.0 (2022-04-22) -- "Vigorous Calisthenics"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-apple-darwin17.0 (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(tidymodels)
+── Attaching packages ────────────────────────────────────── tidymodels 1.0.0 ──
+✔ broom        1.0.1      ✔ recipes      1.0.2 
+✔ dials        1.0.0      ✔ rsample      1.1.0 
+✔ dplyr        1.0.10     ✔ tibble       3.1.8 
+✔ ggplot2      3.3.6      ✔ tidyr        1.2.1 
+✔ infer        1.0.3      ✔ tune         1.0.1 
+✔ modeldata    1.0.1      ✔ workflows    1.1.0 
+✔ parsnip      1.0.2      ✔ workflowsets 1.0.0 
+✔ purrr        0.3.5      ✔ yardstick    1.1.0 
+── Conflicts ───────────────────────────────────────── tidymodels_conflicts() ──
+✖ purrr::discard() masks scales::discard()
+✖ dplyr::filter()  masks stats::filter()
+✖ dplyr::lag()     masks stats::lag()
+✖ recipes::step()  masks stats::step()
+• Learn how to get started at https://www.tidymodels.org/start/
+> library(agua)
+Registered S3 method overwritten by 'agua':
+  method        from     
+  tidy.workflow workflows
+
+Attaching package: ‘agua’
+
+The following object is masked from ‘package:workflowsets’:
+
+    rank_results
+
+> library(h2o)
+
+----------------------------------------------------------------------
+
+Your next step is to start H2O:
+    > h2o.init()
+
+For H2O package documentation, ask for help:
+    > ??h2o
+
+After starting H2O, you can use the Web UI at http://localhost:54321
+For more information visit https://docs.h2o.ai
+
+----------------------------------------------------------------------
+
+
+Attaching package: ‘h2o’
+
+The following objects are masked from ‘package:stats’:
+
+    cor, sd, var
+
+The following objects are masked from ‘package:base’:
+
+    &&, %*%, %in%, ||, apply, as.factor, as.numeric, colnames,
+    colnames<-, ifelse, is.character, is.factor, is.numeric, log,
+    log10, log1p, log2, round, signif, trunc
+
+> library(doMC)
+Loading required package: foreach
+
+Attaching package: ‘foreach’
+
+The following objects are masked from ‘package:purrr’:
+
+    accumulate, when
+
+Loading required package: iterators
+Loading required package: parallel
+> 
+> # ------------------------------------------------------------------------------
+> 
+> # monitor using
+> # /usr/local/opt/python@3.9/Frameworks/Python.framework/Versions/3.9/bin/syrupy.py -c '(R\.framework)|(java)' -t ~/tmp/multithread_grid_mc --separator=, --no-align
+> 
+> # ------------------------------------------------------------------------------
+> 
+> tidymodels_prefer()
+> theme_set(theme_bw())
+> options(pillar.advice = FALSE)
+> 
+> registerDoMC(cores = 10)
+> 
+> h2o.init(nthreads = -1)
+ Connection successful!
+
+R is connected to the H2O cluster: 
+    H2O cluster uptime:         17 minutes 39 seconds 
+    H2O cluster timezone:       America/New_York 
+    H2O data parsing timezone:  UTC 
+    H2O cluster version:        3.38.0.1 
+    H2O cluster version age:    29 days  
+    H2O cluster name:           H2O_started_from_R_max_zji494 
+    H2O cluster total nodes:    1 
+    H2O cluster total memory:   25.92 GB 
+    H2O cluster total cores:    20 
+    H2O cluster allowed cores:  20 
+    H2O cluster healthy:        TRUE 
+    H2O Connection ip:          localhost 
+    H2O Connection port:        54321 
+    H2O Connection proxy:       NA 
+    H2O Internal Security:      FALSE 
+    R Version:                  R version 4.2.0 (2022-04-22) 
+
+> h2o_thread_spec <- agua_backend_options(parallelism = 50)
+> 
+> # ------------------------------------------------------------------------------
+> 
+> set.seed(1)
+> dat <- sim_classification(10000)
+> rs <- vfold_cv(dat, v = 10)
+> 
+> # ------------------------------------------------------------------------------
+> 
+> nnet_spec <-
++   mlp(hidden_units = tune(), penalty = tune(), epochs = tune(), activation = tune()) %>%
++   set_engine("h2o") %>%
++   set_mode("classification")
+> 
+> # ------------------------------------------------------------------------------
+> 
+> set.seed(2)
+> nnet_grid <-
++   nnet_spec %>%
++   extract_parameter_set_dials() %>%
++   grid_max_entropy(size = 5)
+> 
+> # ------------------------------------------------------------------------------
+> 
+> grid_ctrl <- control_grid(backend_options = h2o_thread_spec)
+> 
+> system.time({
++   set.seed(3)
++   nnet_res <-
++     nnet_spec %>%
++     tune_grid(class ~ ., resamples = rs, grid = nnet_grid, control = grid_ctrl)
++ })
+   user  system elapsed 
+ 22.646   4.187  62.921 
+> 
+> collect_metrics(nnet_res)
+# A tibble: 10 × 10
+   hidden_u…¹ penalty epochs activ…² .metric .esti…³  mean     n std_err .config
+        <int>   <dbl>  <int> <chr>   <chr>   <chr>   <dbl> <int>   <dbl> <chr>  
+ 1          3 1.46e-1    723 Maxout… accura… binary  0.913    10 0.00368 Prepro…
+ 2          3 1.46e-1    723 Maxout… roc_auc binary  0.975    10 0.00170 Prepro…
+ 3          7 5.03e-9    106 Tanh    accura… binary  0.857    10 0.00398 Prepro…
+ 4          7 5.03e-9    106 Tanh    roc_auc binary  0.936    10 0.00289 Prepro…
+ 5          2 1.53e-7     91 Rectif… accura… binary  0.846    10 0.00819 Prepro…
+ 6          2 1.53e-7     91 Rectif… roc_auc binary  0.924    10 0.00654 Prepro…
+ 7          2 4.28e-3    155 Maxout… accura… binary  0.847    10 0.0110  Prepro…
+ 8          2 4.28e-3    155 Maxout… roc_auc binary  0.917    10 0.00648 Prepro…
+ 9          9 8.52e-2    599 Maxout… accura… binary  0.827    10 0.00774 Prepro…
+10          9 8.52e-2    599 Maxout… roc_auc binary  0.906    10 0.00698 Prepro…
+# … with abbreviated variable names ¹​hidden_units, ²​activation, ³​.estimator
+> 
+> # ------------------------------------------------------------------------------
+> 
+> q("no")
+> proc.time()
+   user  system elapsed 
+ 27.463   4.450  68.007 

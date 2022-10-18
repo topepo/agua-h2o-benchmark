@@ -1,0 +1,184 @@
+---
+title: "agua-h2o benchmarking"
+output: html_document
+date: "2022-10-18"
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(janitor)
+library(lubridate)
+
+theme_set(theme_bw() + theme(legend.position = "top"))
+# ------------------------------------------------------------------------------
+
+trim_time <- function(x, buffer = 5) {
+  x$dt <- as.POSIXct(x$time)
+  time_start_100 <- min(x$dt[x$cpu > 100]) - seconds(buffer)
+  time_stop_100  <- max(x$dt[x$cpu > 100]) + seconds(buffer)
+
+  x %>%
+    filter(dt < time_stop_100 & dt > time_start_100) %>%
+    mutate(norm_time = base::as.numeric(time - min(time)))
+}
+```
+
+This repository looks at ways to optimally parallel process h2o when it is used with the tidymodels agua package. 
+
+A simulated data set was tuned over a small grid of 5 candidate models and model performance was measured using 10-fold cross-validation. This means that a total of 50 models were created during tuning. 
+
+When tuning or resampling, agua processes the data and sends computations to the h2o server in chunks based on the data set. In other words, if there are 10 data sets (from 10-fold cross-validation), agua sends all of the grid configurations to the h2o server at the same time. In essence, the 50 models are processed in chunks of 10.
+
+The computer is an iMacPro with 10 Intel chips running `r R.version.string`. The [Syrupy](https://github.com/jeetsukumaran/Syrupy) python library was used to monitor CPU usage. 
+
+## Computational methods
+
+The computations were run in a few different ways: 
+
+* __Completely sequential processing__. The idea was to have the h2o server use a single thread to process the models. The file `sequential.R` used `h2o.init(nthreads = 1)` to do this. Implicitly, `h2o.grid()` has a default that models are processed sequentially. 
+
+* __Multithreaded processing__: The server was configured to use all CPUs on the host via `h2o.init(nthreads = -1)` while `h2o.grid()` is still set to sequential processing. This code is in `multithreaded.R`. 
+
+* __Multithreaded parallel processing__: Along with `h2o.init(nthreads = -1)`, the calls to the h2o server used `h2o.grid(parallelism = 5)` so that a maximum of 5 models (i.e. the entire grid) could be processed at once. 
+
+* __Multithreaded, multicore parallel processing__: Along with `h2o.init(nthreads = -1)`, the calls to the h2o server used `h2o.grid(parallelism = 50)`. In additional, multicore parallel processing via the foreach and doMC packages were used to send all of the candidate models for all resamples to the server at once. 
+
+* __Multithreaded, PSOCK parallel processing__: Along with `h2o.init(nthreads = -1)`, the calls to the h2o server used `h2o.grid(parallelism = 50)`. In additional, multicore parallel processing via the foreach and doParallel packages were used to send all of the candidate models for all resamples to the server at once. 
+
+
+## Results
+
+```{r}
+#| label: times
+#| include: false
+
+# Manually copies from Rout files :-(
+
+times <- tribble(
+  ~method, ~time,
+  "completely sequential",             296.609,
+  "multithreaded",                     311.033,
+  "multithreaded parallel",            218.529,
+  "multithreaded, multicore parallel",  62.921,
+  "multithreaded, PSOCK parallel",      63.292
+  
+) %>% 
+  mutate(speed_up = 296.609/ time)
+```
+
+When the baseline configuration of single threaded, sequential processing was used the execution time for the grid search was `r round(times$time[times$method == "completely sequential"], 1)` seconds. The pattern of CPU usage was:
+
+```{r}
+#| label: completely-sequential
+#| warning: false
+#| echo: false
+#| fig-align: center
+#| fig-height: 4
+
+seq_usage <-
+  read_csv("logs/seq.ps.log", show_col_types = FALSE) %>%
+  filter(grepl("h2o", CMD)) %>%
+  clean_names() %>%
+  trim_time()
+
+seq_usage %>%
+  ggplot(aes(norm_time, cpu / 100)) +
+  geom_line() +
+  ggtitle("completely sequential") +
+  labs(x = "time (s)", y = "CPU utilization (#CPUs)")
+```
+
+The 10 clusters of high utilization correspond to the h2o server processing the 5 candidate models for each of the 10 resamples. CPU utilization is about 1, as expected. 
+
+Once multiple threads were allowed, the grid search lasted `r round(times$time[times$method == "multithreaded"], 1)` seconds (slightly slower than the baseline). Looking at the `Rout` file, the output lists that
+
+```
+    H2O cluster total cores:    20 
+    H2O cluster allowed cores:  20 
+```
+
+so it is unclear why the processing was relatively slow. The usage graph: 
+
+```{r}
+#| label: multithreaded
+#| warning: false
+#| echo: false
+#| fig-align: center
+#| fig-height: 4
+
+thread_usage <-
+  read_csv("logs/multithread.ps.log", show_col_types = FALSE) %>%
+  filter(grepl("h2o", CMD)) %>%
+  clean_names() %>%
+  trim_time()
+
+thread_usage %>%
+  ggplot(aes(norm_time, cpu / 100)) +
+  geom_line() +
+  ggtitle("multithreaded") +
+  labs(x = "time (s)", y = "CPU utilization (#CPUs)")
+```
+
+All 20 possible (logical) cores are being used. 
+
+Once we allow the h2o server to train multiple models at once, the grid search lasted `r round(times$time[times$method == "multithreaded parallel"], 1)` seconds (a `r round(times$speed_up[times$method == "multithreaded parallel"], 1)`-fold speed-up): 
+
+
+```{r}
+#| label: multithreaded-parallel
+#| warning: false
+#| echo: false
+#| fig-align: center
+#| fig-height: 4
+
+thread_usage <-
+  read_csv("logs/multithread_grid.ps.log", show_col_types = FALSE) %>%
+  filter(grepl("h2o", CMD)) %>%
+  clean_names() %>%
+  trim_time()
+
+thread_usage %>%
+  ggplot(aes(norm_time, cpu / 100)) +
+  geom_line() +
+  ggtitle("multithreaded and parallel") +
+  labs(x = "time (s)", y = "CPU utilization (#CPUs)")
+```
+
+Once we used the foreach package to send all the jobs to the h2o server at once, there was an drop in execution time: `r round(times$time[times$method == "multithreaded, multicore parallel"], 1)` seconds for muticore and `r round(times$time[times$method == "multithreaded, PSOCK parallel"], 1)` seconds using a PSOCK cluster. These correspond to speed-ups of `r round(times$time[times$method == "multithreaded, PSOCK parallel"], 1)`-fold. 
+
+The CPU utilization for both external parallelization methods show constant utilization since all 50 models are being continually processed: 
+
+
+```{r}
+#| label: multithreaded-parallel-external
+#| warning: false
+#| echo: false
+#| fig-align: center
+#| fig-height: 4.1
+
+thread_grid_mc_usage <-
+  read_csv("logs/multithread_grid_mc.ps.log", show_col_types = FALSE) %>%
+  filter(grepl("h2o", CMD)) %>%
+  clean_names() %>%
+  trim_time()
+
+thread_grid_psock_usage <-
+  read_csv("logs/multithread_grid_psock.ps.log", show_col_types = FALSE) %>%
+  filter(grepl("h2o", CMD)) %>%
+  clean_names() %>%
+  trim_time()
+
+external_parallel <-
+  thread_grid_mc_usage %>% mutate(tool = "multicore") %>%
+  bind_rows(thread_grid_psock_usage %>% mutate(tool = "PSOCK"))
+
+external_parallel %>%
+  ggplot(aes(norm_time, cpu / 100, col = tool)) +
+  geom_line() +
+  ggtitle("multithreaded, parallel, with additional external parallelization") +
+  labs(x = "time (s)", y = "CPU utilization (#CPUs)")
+```
+
