@@ -29,7 +29,7 @@ The computations were run in a few different ways:
 
 When the baseline configuration of single threaded, sequential processing was used the execution time for the grid search was 296.6 seconds. The pattern of CPU usage was:
 
-<img src="figure/completely-sequential-1.png" alt="plot of chunk completely-sequential" style="display: block; margin: auto;" />
+<img src="figure/completely-sequential-1.svg" alt="plot of chunk completely-sequential" style="display: block; margin: auto;" />
 
 The 10 clusters of high utilization correspond to the h2o server processing the 5 candidate models for each of the 10 resamples. CPU utilization is about 1, as expected. 
 
@@ -42,7 +42,7 @@ Once multiple threads were allowed, the grid search lasted 311 seconds (slightly
 
 so it is unclear why the processing was relatively slow. The usage graph: 
 
-<img src="figure/multithreaded-1.png" alt="plot of chunk multithreaded" style="display: block; margin: auto;" />
+<img src="figure/multithreaded-1.svg" alt="plot of chunk multithreaded" style="display: block; margin: auto;" />
 
 All 20 possible (logical) cores are being used. 
 
@@ -56,5 +56,5 @@ Once we used the foreach package to send all the jobs to the h2o server at once,
 The CPU utilization for both external parallelization methods show constant utilization since all 50 models are being continually processed: 
 
 
-<img src="figure/multithreaded-parallel-external-1.png" alt="plot of chunk multithreaded-parallel-external" style="display: block; margin: auto;" />
+<img src="figure/multithreaded-parallel-external-1.svg" alt="plot of chunk multithreaded-parallel-external" style="display: block; margin: auto;" />
 

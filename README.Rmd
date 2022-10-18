@@ -71,6 +71,7 @@ When the baseline configuration of single threaded, sequential processing was us
 #| echo: false
 #| fig-align: center
 #| fig-height: 4
+#| dev: svg
 
 seq_usage <-
   read_csv("logs/seq.ps.log", show_col_types = FALSE) %>%
@@ -102,6 +103,7 @@ so it is unclear why the processing was relatively slow. The usage graph:
 #| echo: false
 #| fig-align: center
 #| fig-height: 4
+#| dev: svg
 
 thread_usage <-
   read_csv("logs/multithread.ps.log", show_col_types = FALSE) %>%
@@ -153,6 +155,7 @@ The CPU utilization for both external parallelization methods show constant util
 #| echo: false
 #| fig-align: center
 #| fig-height: 4.1
+#| dev: svg
 
 thread_grid_mc_usage <-
   read_csv("logs/multithread_grid_mc.ps.log", show_col_types = FALSE) %>%
